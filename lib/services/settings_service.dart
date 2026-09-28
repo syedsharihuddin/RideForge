@@ -5,8 +5,13 @@ class SettingsService {
 
   static const String _keyIsMetric = 'is_metric';
   static const String _keyKeepScreenOn = 'keep_screen_on';
+  static const String _keyAutomaticTracking = 'automatic_tracking';
 
   SettingsService._init();
+
+  // ---------------------------------------------------------------------------
+  // Measurement Units
+  // ---------------------------------------------------------------------------
 
   Future<bool> isMetric() async {
     final prefs = await SharedPreferences.getInstance();
@@ -18,6 +23,10 @@ class SettingsService {
     await prefs.setBool(_keyIsMetric, value);
   }
 
+  // ---------------------------------------------------------------------------
+  // Display
+  // ---------------------------------------------------------------------------
+
   Future<bool> keepScreenOn() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_keyKeepScreenOn) ?? true;
@@ -28,8 +37,30 @@ class SettingsService {
     await prefs.setBool(_keyKeepScreenOn, value);
   }
 
-  // Conversion helpers
+  // ---------------------------------------------------------------------------
+  // Automatic Trip Tracking
+  // ---------------------------------------------------------------------------
+
+  /// Whether RideForge should continuously monitor location
+  /// for automatic trip detection.
+  ///
+  /// Default is OFF so the user explicitly enables background tracking.
+  Future<bool> automaticTracking() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyAutomaticTracking) ?? false;
+  }
+
+  Future<void> setAutomaticTracking(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyAutomaticTracking, value);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Conversion Helpers
+  // ---------------------------------------------------------------------------
+
   static double kmToMiles(double km) => km * 0.621371;
+
   static double kmhToMph(double kmh) => kmh * 0.621371;
 
   static String formatDistance(double distanceKm, bool isMetric) {
@@ -49,5 +80,6 @@ class SettingsService {
   }
 
   static String speedUnit(bool isMetric) => isMetric ? 'km/h' : 'mph';
+
   static String distanceUnit(bool isMetric) => isMetric ? 'km' : 'mi';
 }

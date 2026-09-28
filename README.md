@@ -116,7 +116,7 @@ HomeScreen ← DatabaseService.getTodayStats()
 | **Flutter** 3.x | Cross-platform mobile framework |
 | **Dart** | Programming language |
 | **geolocator** `^14.0.3` | GPS location stream & permissions |
-| **flutter_map** `^8.3.2` | OpenStreetMap tile rendering |
+| **maplibre_gl** `^0.27.1` | OpenStreetMap-compatible vector maps via OpenFreeMap |
 | **latlong2** `^0.10.1` | Geographic coordinate types |
 | **sqflite** `^2.4.1` | Local SQLite database |
 | **path** `^1.9.0` | File system path utilities |

@@ -1,22 +1,105 @@
 import 'package:flutter/material.dart';
+
 import 'screens/tracking_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/ride_details_screen.dart';
+
 import 'services/database_service.dart';
 import 'services/settings_service.dart';
+import 'services/notification_service.dart';
+import 'services/automatic_tracking_service.dart';
+
+final GlobalKey<NavigatorState> navigatorKey =
+    GlobalKey<NavigatorState>();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
   runApp(const BikeTrackerApp());
+
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    NotificationService.instance.onNotificationTap =
+        _handleNotificationTap;
+
+    await NotificationService.instance.initialize();
+  });
 }
 
-class BikeTrackerApp extends StatelessWidget {
+Future<void> _handleNotificationTap(String? payload) async {
+  if (payload == null || payload.isEmpty) {
+    return;
+  }
+
+  final rideId = int.tryParse(payload);
+
+  if (rideId == null) {
+    return;
+  }
+
+  final ride =
+      await DatabaseService.instance.getRideById(rideId);
+
+  if (ride == null) {
+    return;
+  }
+
+  navigatorKey.currentState?.push(
+    MaterialPageRoute(
+      builder: (_) => RideDetailsScreen(
+        ride: ride,
+      ),
+    ),
+  );
+}
+
+class BikeTrackerApp extends StatefulWidget {
   const BikeTrackerApp({super.key});
+
+  @override
+  State<BikeTrackerApp> createState() => _BikeTrackerAppState();
+}
+
+class _BikeTrackerAppState extends State<BikeTrackerApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _resumeAutomaticTracking();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _resumeAutomaticTracking();
+    }
+  }
+
+  void _resumeAutomaticTracking() {
+    AutomaticTrackingService.instance.startIfEnabled().then((started) {
+      if (!started) {
+        debugPrint(
+          '[AutomaticTracking] Monitoring was not started '
+          '(preference is off or required access is unavailable).',
+        );
+      }
+    }).catchError((Object error, StackTrace stackTrace) {
+      debugPrint('[AutomaticTracking] Startup failed: $error');
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'Bike Tracker',
 
@@ -129,7 +212,8 @@ class BikeTrackerApp extends StatelessWidget {
 
             elevation: 3,
 
-            shadowColor: const Color(0xFFB8754D).withValues(alpha: 0.25),
+            shadowColor:
+                const Color(0xFFB8754D).withValues(alpha: 0.25),
 
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -194,7 +278,8 @@ class MainNavigationScreen extends StatefulWidget {
       _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState
+    extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
   @override
@@ -271,17 +356,23 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
 
   Future<void> _loadTodayStats() async {
     try {
-      final metric = await SettingsService.instance.isMetric();
-      final stats = await DatabaseService.instance.getTodayStats();
+      final metric =
+          await SettingsService.instance.isMetric();
+
+      final stats =
+          await DatabaseService.instance.getTodayStats();
 
       if (!mounted) return;
 
       setState(() {
         _isMetric = metric;
+
         _todayDistance =
             (stats['totalDistance'] as double?) ?? 0.0;
+
         _todayDurationSeconds =
             (stats['totalDurationSeconds'] as int?) ?? 0;
+
         _isLoadingToday = false;
       });
     } catch (_) {
@@ -361,7 +452,8 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
               await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const SettingsScreen(),
+                  builder: (context) =>
+                      const SettingsScreen(),
                 ),
               );
 
@@ -374,7 +466,8 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
             icon: const Icon(Icons.info_outline),
             tooltip: 'About',
 
-            onPressed: () => _showAboutDialog(context),
+            onPressed: () =>
+                _showAboutDialog(context),
           ),
         ],
       ),
@@ -383,7 +476,8 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
         padding: const EdgeInsets.all(20),
 
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment:
+              CrossAxisAlignment.stretch,
 
           children: [
             const SizedBox(height: 20),

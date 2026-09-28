@@ -1,15 +1,17 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+
 import 'trip_summary_screen.dart';
 import '../config/ride_thresholds.dart';
 import '../services/auto_ride_gate.dart';
 import '../services/location_service.dart';
 import '../services/settings_service.dart';
+import '../widgets/ride_map_widget.dart';
 
 class TrackingScreen extends StatefulWidget {
   const TrackingScreen({super.key});
@@ -20,7 +22,6 @@ class TrackingScreen extends StatefulWidget {
 
 class _TrackingScreenState extends State<TrackingScreen> {
   final LocationService _locationService = LocationService();
-  final MapController _mapController = MapController();
   final AutoRideGate _rideGate = AutoRideGate();
 
   StreamSubscription<Position>? _positionSubscription;
@@ -28,6 +29,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   Position? _lastPosition;
   final List<Position> _routePoints = [];
+  List<LatLng> _mapRoutePoints = const [];
 
   double _currentSpeed = 0.0;
   double _distance = 0.0;
@@ -64,9 +66,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Location permission is required to track your ride.',
-          ),
+          content: Text('Location permission is required to track your ride.'),
         ),
       );
 
@@ -105,6 +105,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
     _routePoints.clear();
     if (_lastPosition != null) {
       _routePoints.add(_lastPosition!);
+      _mapRoutePoints = [
+        LatLng(_lastPosition!.latitude, _lastPosition!.longitude),
+      ];
+    } else {
+      _mapRoutePoints = const [];
     }
 
     if (_keepScreenOn) {
@@ -127,25 +132,22 @@ class _TrackingScreenState extends State<TrackingScreen> {
   void _startHeartbeat() {
     _timer?.cancel();
 
-    _timer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) {
-        if (!mounted || _isPaused) return;
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _isPaused) return;
 
-        if (_isRiding) {
-          _elapsedSeconds++;
-          _calculateAverageSpeed();
+      if (_isRiding) {
+        _elapsedSeconds++;
+        _calculateAverageSpeed();
 
-          final signal = _rideGate.checkTimeout(DateTime.now());
-          if (signal == AutoRideSignal.tripEnded) {
-            _stopRide();
-            return;
-          }
+        final signal = _rideGate.checkTimeout(DateTime.now());
+        if (signal == AutoRideSignal.tripEnded) {
+          _stopRide();
+          return;
         }
+      }
 
-        setState(() {});
-      },
-    );
+      setState(() {});
+    });
   }
 
   void _startLocationStream() {
@@ -171,14 +173,12 @@ class _TrackingScreenState extends State<TrackingScreen> {
       );
     }
 
-    _positionSubscription = Geolocator.getPositionStream(
-      locationSettings: locationSettings,
-    ).listen(
-      (Position position) {
-        if (_isPaused || !mounted || _isStopping) return;
-        _updateRideData(position);
-      },
-    );
+    _positionSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings)
+            .listen((Position position) {
+              if (_isPaused || !mounted || _isStopping) return;
+              _updateRideData(position);
+            });
   }
 
   void _updateRideData(Position position) {
@@ -200,12 +200,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
     if (!_isRiding) {
       _lastPosition = position;
-      if (_autoFollow) {
-        _mapController.move(
-          LatLng(position.latitude, position.longitude),
-          _mapController.camera.zoom,
-        );
-      }
       setState(() {});
       return;
     }
@@ -235,26 +229,18 @@ class _TrackingScreenState extends State<TrackingScreen> {
       if (isMoving || isDisplacement) {
         _distance += distanceInMeters / 1000.0;
         _routePoints.add(position);
+        _mapRoutePoints = [
+          ..._mapRoutePoints,
+          LatLng(position.latitude, position.longitude),
+        ];
         _lastPosition = position;
-
-        if (_autoFollow) {
-          _mapController.move(
-            LatLng(position.latitude, position.longitude),
-            _mapController.camera.zoom,
-          );
-        }
       } else if (position.accuracy <= 10.0 && distanceInMeters < 5.0) {
         _lastPosition = position;
       }
     } else {
       _lastPosition = position;
       _routePoints.add(position);
-      if (_autoFollow) {
-        _mapController.move(
-          LatLng(position.latitude, position.longitude),
-          16,
-        );
-      }
+      _mapRoutePoints = [LatLng(position.latitude, position.longitude)];
     }
 
     if (filteredSpeed > _maxSpeed) {
@@ -372,56 +358,15 @@ class _TrackingScreenState extends State<TrackingScreen> {
               _buildStopGraceBanner(graceRemaining),
             SizedBox(
               height: 280,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: FlutterMap(
-                  mapController: _mapController,
-                  options: const MapOptions(
-                    initialCenter: LatLng(17.3850, 78.4867),
-                    initialZoom: 15,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.example.bike',
-                    ),
-                    if (_isRiding)
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: _routePoints
-                                .map(
-                                  (position) => LatLng(
-                                    position.latitude,
-                                    position.longitude,
-                                  ),
-                                )
-                                .toList(),
-                            strokeWidth: 5,
-                            color: const Color(0xFFD6A06A),
-                          ),
-                        ],
-                      ),
-                    if (_lastPosition != null)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: LatLng(
-                              _lastPosition!.latitude,
-                              _lastPosition!.longitude,
-                            ),
-                            width: 50,
-                            height: 50,
-                            child: const Icon(
-                              Icons.location_on,
-                              size: 45,
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
+              child: RideMapWidget(
+                routePoints: _mapRoutePoints,
+                currentLocation: _lastPosition == null
+                    ? null
+                    : LatLng(_lastPosition!.latitude, _lastPosition!.longitude),
+                currentLocationTimestamp: _lastPosition?.timestamp,
+                currentLocationAccuracyMeters: _lastPosition?.accuracy,
+                followLocation: _autoFollow,
+                initialZoom: 15,
               ),
             ),
             const SizedBox(height: 20),
@@ -444,10 +389,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     ),
                     Text(
                       SettingsService.speedUnit(_isMetric),
-                      style: const TextStyle(
-                        fontSize: 18,
-                        color: Colors.grey,
-                      ),
+                      style: const TextStyle(fontSize: 18, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -465,11 +407,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _statCard(
-                    Icons.timer,
-                    _formatDuration(),
-                    'Duration',
-                  ),
+                  child: _statCard(Icons.timer, _formatDuration(), 'Duration'),
                 ),
               ],
             ),
@@ -524,10 +462,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   icon: const Icon(Icons.stop),
                   label: const Text(
                     'STOP RIDE',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -540,10 +475,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   icon: const Icon(Icons.close),
                   label: const Text(
                     'CANCEL MONITORING',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -567,10 +499,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
               const Text(
                 'RIDING starts automatically',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 6),
               Text(
@@ -578,10 +507,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 'for ${tripStartHoldDuration.inSeconds}s with accurate GPS. '
                 'A single spike will not start the trip.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey,
-                ),
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
               const SizedBox(height: 12),
               LinearProgressIndicator(
@@ -624,16 +550,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
             const SizedBox(height: 8),
             Text(
               value,
-              style: const TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.grey),
-            ),
+            Text(label, style: const TextStyle(color: Colors.grey)),
           ],
         ),
       ),

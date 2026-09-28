@@ -1,24 +1,66 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:intl/intl.dart';
+import 'package:maplibre_gl/maplibre_gl.dart' as ml;
+
 import '../models/ride.dart';
 import '../services/database_service.dart';
+import '../services/ride_share_card_service.dart';
+import '../widgets/ride_map_widget.dart';
 
 class TripDetailsScreen extends StatefulWidget {
   final Ride ride;
 
-  const TripDetailsScreen({
-    super.key,
-    required this.ride,
-  });
+  const TripDetailsScreen({super.key, required this.ride});
 
   @override
   State<TripDetailsScreen> createState() => _TripDetailsScreenState();
 }
 
 class _TripDetailsScreenState extends State<TripDetailsScreen> {
-  final MapController _mapController = MapController();
+  final GlobalKey _routeMapKey = GlobalKey();
+  ml.MapLibreMapController? _mapController;
+  bool _mapReady = false;
+  bool _sharing = false;
+
+  void _onMapReady(ml.MapLibreMapController controller) {
+    if (!mounted) return;
+    setState(() {
+      _mapController = controller;
+      _mapReady = true;
+    });
+  }
+
+  Future<void> _shareRide() async {
+    final controller = _mapController;
+    if (controller == null || _sharing) return;
+
+    setState(() => _sharing = true);
+    try {
+      final renderObject = _routeMapKey.currentContext?.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.hasSize) {
+        throw StateError('Ride map is not ready to share.');
+      }
+
+      // MapLibre's snapshotter uses only the style and camera. Render the
+      // saved route and its endpoints into the exported map image separately.
+      final mapPng = await controller.takeSnapshot();
+      if (!mounted) return;
+      await RideShareCardService.share(
+        context: context,
+        ride: widget.ride,
+        mapPng: mapPng,
+        mapController: controller,
+        mapViewSize: renderObject.size,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not share this ride: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
 
   Future<void> _confirmDelete() async {
     final confirmed = await showDialog<bool>(
@@ -60,12 +102,6 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   Widget build(BuildContext context) {
     final ride = widget.ride;
     final timeFormat = DateFormat('h:mm a');
-    final startLatLng = ride.routePoints.isNotEmpty
-        ? ride.routePoints.first
-        : const LatLng(17.3850, 78.4867);
-    final endLatLng =
-        ride.routePoints.isNotEmpty ? ride.routePoints.last : startLatLng;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -73,6 +109,17 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            icon: _sharing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.ios_share),
+            tooltip: 'Share Ride',
+            onPressed: _mapReady && !_sharing ? _shareRide : null,
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
             tooltip: 'Delete Ride',
@@ -88,58 +135,13 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
             // ROUTE MAP VIEW
             // -----------------------------------------------------------------
             SizedBox(
+              key: _routeMapKey,
               height: 320,
-              child: FlutterMap(
-                mapController: _mapController,
-                options: MapOptions(
-                  initialCenter: startLatLng,
-                  initialZoom: 15,
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.example.bike',
-                  ),
-                  if (ride.routePoints.isNotEmpty) ...[
-                    PolylineLayer(
-                      polylines: [
-                        Polyline(
-                          points: ride.routePoints,
-                          strokeWidth: 5.0,
-                          color: Colors.blueAccent,
-                        ),
-                      ],
-                    ),
-                    MarkerLayer(
-                      markers: [
-                        // Start Marker
-                        Marker(
-                          point: startLatLng,
-                          width: 36,
-                          height: 36,
-                          child: const Icon(
-                            Icons.trip_origin,
-                            color: Colors.greenAccent,
-                            size: 28,
-                          ),
-                        ),
-                        // Finish Marker
-                        if (ride.routePoints.length > 1)
-                          Marker(
-                            point: endLatLng,
-                            width: 36,
-                            height: 36,
-                            child: const Icon(
-                              Icons.sports_score,
-                              color: Colors.redAccent,
-                              size: 32,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ],
+              child: RideMapWidget(
+                routePoints: ride.routePoints,
+                fitRoute: true,
+                showRouteEndpoints: true,
+                onMapReady: _onMapReady,
               ),
             ),
 
@@ -162,10 +164,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                   const SizedBox(height: 4),
                   Text(
                     '${timeFormat.format(ride.startTime)} - ${timeFormat.format(ride.endTime)}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                    ),
+                    style: const TextStyle(fontSize: 14, color: Colors.grey),
                   ),
 
                   const SizedBox(height: 24),
@@ -233,9 +232,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                               children: [
                                 const Text(
                                   'Route Accuracy',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
@@ -278,18 +275,12 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
             Text(
               value,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
             Text(
               title,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
-              ),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
