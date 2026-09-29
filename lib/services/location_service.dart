@@ -2,15 +2,13 @@ import 'package:geolocator/geolocator.dart';
 
 class LocationService {
   Future<bool> checkPermission() async {
-    final serviceEnabled =
-        await Geolocator.isLocationServiceEnabled();
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
       return false;
     }
 
-    LocationPermission permission =
-        await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -27,18 +25,14 @@ class LocationService {
 
   /// Checks whether continuous background location permission
   /// has been granted.
-  Future<bool> checkBackgroundPermission({
-    bool requestIfDenied = true,
-  }) async {
-    final serviceEnabled =
-        await Geolocator.isLocationServiceEnabled();
+  Future<bool> checkBackgroundPermission({bool requestIfDenied = true}) async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
       return false;
     }
 
-    LocationPermission permission =
-        await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied && requestIfDenied) {
       permission = await Geolocator.requestPermission();
@@ -60,8 +54,17 @@ class LocationService {
     }
 
     return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    );
+  }
+
+  /// Streams location updates for screens that display a live GPS position.
+  /// Call [checkPermission] before subscribing.
+  Stream<Position> getPositionStream() {
+    return Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
       ),
     );
   }

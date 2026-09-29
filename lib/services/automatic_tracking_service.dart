@@ -12,7 +12,7 @@ import 'location_service.dart';
 import 'notification_service.dart';
 import 'settings_service.dart';
 
-class AutomaticTrackingService {
+class AutomaticTrackingService extends ChangeNotifier {
   static final AutomaticTrackingService instance =
       AutomaticTrackingService._internal();
 
@@ -32,6 +32,7 @@ class AutomaticTrackingService {
 
   double _distance = 0.0;
   double _maxSpeed = 0.0;
+  double _currentSpeedKmh = 0.0;
 
   bool _running = false;
   bool _connecting = false;
@@ -44,6 +45,26 @@ class AutomaticTrackingService {
 
   bool get isRunning => _running;
   bool get isRideActive => _gate.isRiding;
+  double get activeDistanceKm => _gate.isRiding ? _distance : 0.0;
+  double get activeMaxSpeedKmh => _gate.isRiding ? _maxSpeed : 0.0;
+  double get activeCurrentSpeedKmh => _gate.isRiding ? _currentSpeedKmh : 0.0;
+  int get activeDurationSeconds => _rideStartTime == null
+      ? 0
+      : DateTime.now().difference(_rideStartTime!).inSeconds;
+  double get activeAverageSpeedKmh {
+    final durationSeconds = activeDurationSeconds;
+    if (durationSeconds <= 0) return 0.0;
+    return (_distance / (durationSeconds / 3600)).clamp(0.0, _maxSpeed);
+  }
+
+  Position? get activeCurrentPosition => _gate.isRiding ? _lastPosition : null;
+  List<LatLng> get activeRoutePoints => _gate.isRiding
+      ? List.unmodifiable(
+          _routePoints.map(
+            (position) => LatLng(position.latitude, position.longitude),
+          ),
+        )
+      : const [];
 
   Future<bool> start() {
     if (_running) {
@@ -91,8 +112,7 @@ class AutomaticTrackingService {
       return false;
     }
 
-    final permission =
-        await LocationService().checkBackgroundPermission(
+    final permission = await LocationService().checkBackgroundPermission(
       requestIfDenied: false,
     );
 
@@ -150,12 +170,9 @@ class AutomaticTrackingService {
         accuracy: LocationAccuracy.high,
         distanceFilter: 5,
         intervalDuration: const Duration(seconds: 1),
-        foregroundNotificationConfig:
-            const ForegroundNotificationConfig(
-          notificationTitle:
-              '🏍️ RideForge Automatic Tracking',
-          notificationText:
-              'Monitoring for rides in the background',
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: '🏍️ RideForge Automatic Tracking',
+          notificationText: 'Monitoring for rides in the background',
           enableWakeLock: false,
         ),
       );
@@ -167,9 +184,7 @@ class AutomaticTrackingService {
     }
 
     try {
-      final stream = Geolocator.getPositionStream(
-        locationSettings: settings,
-      );
+      final stream = Geolocator.getPositionStream(locationSettings: settings);
       _positionSubscription = stream.listen(
         (position) async {
           if (generation == _streamGeneration) {
@@ -260,17 +275,13 @@ class AutomaticTrackingService {
     }
 
     if (_gate.isRiding) {
-      _recordRidePosition(
-        position,
-        speedKmh,
-      );
+      _currentSpeedKmh = speedKmh;
+      _recordRidePosition(position, speedKmh);
+      notifyListeners();
     }
   }
 
-  void _beginRide(
-    Position firstPosition,
-    DateTime now,
-  ) {
+  void _beginRide(Position firstPosition, DateTime now) {
     _rideStartTime = now;
 
     _distance = 0.0;
@@ -282,26 +293,19 @@ class AutomaticTrackingService {
     _lastPosition = firstPosition;
   }
 
-  void _recordRidePosition(
-    Position position,
-    double speedKmh,
-  ) {
+  void _recordRidePosition(Position position, double speedKmh) {
     if (_lastPosition != null) {
-      final distanceInMeters =
-          Geolocator.distanceBetween(
+      final distanceInMeters = Geolocator.distanceBetween(
         _lastPosition!.latitude,
         _lastPosition!.longitude,
         position.latitude,
         position.longitude,
       );
 
-      final isMoving =
-          speedKmh >= 1.8 &&
-          distanceInMeters >= 5.0;
+      final isMoving = speedKmh >= 1.8 && distanceInMeters >= 5.0;
 
       final isGoodDisplacement =
-          distanceInMeters >= 12.0 &&
-          position.accuracy <= 15.0;
+          distanceInMeters >= 12.0 && position.accuracy <= 15.0;
 
       if (isMoving || isGoodDisplacement) {
         _distance += distanceInMeters / 1000.0;
@@ -323,17 +327,16 @@ class AutomaticTrackingService {
   }
 
   void _checkTimeout() {
-    if (!_running ||
-        !_gate.isRiding ||
-        _savingRide) {
+    if (!_running || !_gate.isRiding || _savingRide) {
       return;
     }
 
-    final signal =
-        _gate.checkTimeout(DateTime.now());
+    final signal = _gate.checkTimeout(DateTime.now());
 
     if (signal == AutoRideSignal.tripEnded) {
       _finishRide();
+    } else {
+      notifyListeners();
     }
   }
 
@@ -342,9 +345,7 @@ class AutomaticTrackingService {
     // HARD GUARD
     // ============================================================
 
-    if (_savingRide ||
-        !_running ||
-        _rideStartTime == null) {
+    if (_savingRide || !_running || _rideStartTime == null) {
       return;
     }
 
@@ -361,20 +362,13 @@ class AutomaticTrackingService {
     final rideDistance = _distance;
     final rideMaxSpeed = _maxSpeed;
 
-    final rideRoutePoints = List<Position>.from(
-      _routePoints,
-    );
+    final rideRoutePoints = List<Position>.from(_routePoints);
 
-    final duration =
-        rideEndTime.difference(rideStartTime);
+    final duration = rideEndTime.difference(rideStartTime);
 
-    final durationHours =
-        duration.inSeconds / 3600.0;
+    final durationHours = duration.inSeconds / 3600.0;
 
-    final averageSpeed =
-        durationHours > 0
-            ? rideDistance / durationHours
-            : 0.0;
+    final averageSpeed = durationHours > 0 ? rideDistance / durationHours : 0.0;
 
     // ============================================================
     // CRITICAL:
@@ -395,12 +389,7 @@ class AutomaticTrackingService {
         averageSpeed: averageSpeed,
         maxSpeed: rideMaxSpeed,
         routePoints: rideRoutePoints
-            .map(
-              (position) => LatLng(
-                position.latitude,
-                position.longitude,
-              ),
-            )
+            .map((position) => LatLng(position.latitude, position.longitude))
             .toList(),
       );
 
@@ -408,10 +397,7 @@ class AutomaticTrackingService {
       // SAVE EXACTLY ONCE
       // ============================================================
 
-      final rideId =
-          await DatabaseService.instance.insertRide(
-        ride,
-      );
+      final rideId = await DatabaseService.instance.insertRide(ride);
 
       // ============================================================
       // COMPLETION NOTIFICATION
@@ -446,5 +432,7 @@ class AutomaticTrackingService {
 
     _distance = 0.0;
     _maxSpeed = 0.0;
+    _currentSpeedKmh = 0.0;
+    notifyListeners();
   }
 }

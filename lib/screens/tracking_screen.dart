@@ -8,21 +8,44 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'trip_summary_screen.dart';
 import '../config/ride_thresholds.dart';
-import '../services/auto_ride_gate.dart';
+import '../services/automatic_tracking_service.dart';
 import '../services/location_service.dart';
 import '../services/settings_service.dart';
 import '../widgets/ride_map_widget.dart';
 
 class TrackingScreen extends StatefulWidget {
-  const TrackingScreen({super.key});
+  const TrackingScreen({
+    super.key,
+    this.automaticRideViewOnly = false,
+    this.onProgressChanged,
+    this.onClose,
+    this.onRideFinished,
+  });
+
+  final bool automaticRideViewOnly;
+  final ValueChanged<TrackingProgress>? onProgressChanged;
+  final VoidCallback? onClose;
+  final VoidCallback? onRideFinished;
 
   @override
   State<TrackingScreen> createState() => _TrackingScreenState();
 }
 
+@immutable
+class TrackingProgress {
+  const TrackingProgress({
+    this.isActive = false,
+    this.distanceKm = 0.0,
+    this.durationSeconds = 0,
+  });
+
+  final bool isActive;
+  final double distanceKm;
+  final int durationSeconds;
+}
+
 class _TrackingScreenState extends State<TrackingScreen> {
   final LocationService _locationService = LocationService();
-  final AutoRideGate _rideGate = AutoRideGate();
 
   StreamSubscription<Position>? _positionSubscription;
   Timer? _timer;
@@ -45,13 +68,60 @@ class _TrackingScreenState extends State<TrackingScreen> {
   bool _autoFollow = true;
   bool _keepScreenOn = true;
   bool _isStopping = false;
+  bool _manualRideActive = false;
 
-  bool get _isRiding => _rideGate.isRiding;
+  AutomaticTrackingService get _automaticTracking =>
+      AutomaticTrackingService.instance;
+
+  bool get _isRiding => widget.automaticRideViewOnly
+      ? _automaticTracking.isRideActive
+      : _manualRideActive;
+  double get _displayDistance => widget.automaticRideViewOnly
+      ? _automaticTracking.activeDistanceKm
+      : _distance;
+  int get _displayElapsedSeconds => widget.automaticRideViewOnly
+      ? _automaticTracking.activeDurationSeconds
+      : _elapsedSeconds;
+  double get _displayCurrentSpeed => widget.automaticRideViewOnly
+      ? _automaticTracking.activeCurrentSpeedKmh
+      : _currentSpeed;
+  double get _displayAverageSpeed => widget.automaticRideViewOnly
+      ? _automaticTracking.activeAverageSpeedKmh
+      : _averageSpeed;
+  double get _displayMaxSpeed => widget.automaticRideViewOnly
+      ? _automaticTracking.activeMaxSpeedKmh
+      : _maxSpeed;
 
   @override
   void initState() {
     super.initState();
-    _startMonitoring();
+    if (widget.automaticRideViewOnly) {
+      _isLoading = false;
+      _loadMetricPreference();
+    } else {
+      _beginRecording();
+      _manualRideActive = true;
+      _isLoading = false;
+      _startHeartbeat();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _notifyRideProgress();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Color(0xFF6F513D),
+            behavior: SnackBarBehavior.floating,
+            content: Text('Ride started.'),
+          ),
+        );
+      });
+      _startMonitoring();
+    }
+  }
+
+  Future<void> _loadMetricPreference() async {
+    final isMetric = await SettingsService.instance.isMetric();
+    if (!mounted) return;
+    setState(() => _isMetric = isMetric);
   }
 
   Future<void> _startMonitoring() async {
@@ -79,6 +149,12 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
     if (initialPosition != null) {
       _lastPosition = initialPosition;
+      if (_routePoints.isEmpty) {
+        _routePoints.add(initialPosition);
+        _mapRoutePoints = [
+          LatLng(initialPosition.latitude, initialPosition.longitude),
+        ];
+      }
     }
 
     final isMetric = await SettingsService.instance.isMetric();
@@ -92,7 +168,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
       _isLoading = false;
     });
 
-    _startHeartbeat();
+    if (keepScreenOn) {
+      WakelockPlus.enable();
+    } else {
+      WakelockPlus.disable();
+    }
     _startLocationStream();
   }
 
@@ -115,18 +195,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
     if (_keepScreenOn) {
       WakelockPlus.enable();
     }
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: const Color(0xFF6F513D),
-        behavior: SnackBarBehavior.floating,
-        content: Text(
-          'Ride started — speed above ${tripStartSpeedKmh.toStringAsFixed(0)} km/h.',
-        ),
-      ),
-    );
   }
 
   void _startHeartbeat() {
@@ -138,15 +206,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
       if (_isRiding) {
         _elapsedSeconds++;
         _calculateAverageSpeed();
-
-        final signal = _rideGate.checkTimeout(DateTime.now());
-        if (signal == AutoRideSignal.tripEnded) {
-          _stopRide();
-          return;
-        }
       }
 
       setState(() {});
+      _notifyRideProgress();
     });
   }
 
@@ -184,19 +247,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
   void _updateRideData(Position position) {
     final speedKmh = position.speed < 0 ? 0.0 : position.speed * 3.6;
     _currentSpeed = speedKmh < 1.8 ? 0.0 : speedKmh;
-
-    final signal = _rideGate.ingest(
-      now: DateTime.now(),
-      speedKmh: speedKmh,
-      accuracyMeters: position.accuracy,
-    );
-
-    if (signal == AutoRideSignal.tripStarted) {
-      _lastPosition = position;
-      _beginRecording();
-      setState(() {});
-      return;
-    }
 
     if (!_isRiding) {
       _lastPosition = position;
@@ -251,6 +301,17 @@ class _TrackingScreenState extends State<TrackingScreen> {
     _calculateAverageSpeed();
 
     setState(() {});
+    _notifyRideProgress();
+  }
+
+  void _notifyRideProgress({bool? activeOverride}) {
+    widget.onProgressChanged?.call(
+      TrackingProgress(
+        isActive: activeOverride ?? (_isRiding && !_isStopping),
+        distanceKm: _distance,
+        durationSeconds: _elapsedSeconds,
+      ),
+    );
   }
 
   void _calculateAverageSpeed() {
@@ -270,11 +331,14 @@ class _TrackingScreenState extends State<TrackingScreen> {
     setState(() {
       _isPaused = !_isPaused;
     });
+    _notifyRideProgress();
   }
 
   void _stopRide() {
     if (_isStopping || !_isRiding) return;
     _isStopping = true;
+    _manualRideActive = false;
+    _notifyRideProgress(activeOverride: false);
 
     _timer?.cancel();
     _positionSubscription?.cancel();
@@ -289,26 +353,31 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
     if (!mounted) return;
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TripSummaryScreen(
-          distance: _distance,
-          duration: duration,
-          averageSpeed: _averageSpeed,
-          maxSpeed: _maxSpeed,
-          startTime: _startTime ?? DateTime.now(),
-          endTime: endTime,
-          routePoints: points,
-        ),
+    final summaryRoute = MaterialPageRoute<void>(
+      builder: (context) => TripSummaryScreen(
+        distance: _distance,
+        duration: duration,
+        averageSpeed: _averageSpeed,
+        maxSpeed: _maxSpeed,
+        startTime: _startTime ?? DateTime.now(),
+        endTime: endTime,
+        routePoints: points,
       ),
     );
+
+    if (widget.onRideFinished == null) {
+      Navigator.pushReplacement(context, summaryRoute);
+    } else {
+      Navigator.push(context, summaryRoute).then((_) {
+        widget.onRideFinished?.call();
+      });
+    }
   }
 
   String _formatDuration() {
-    final hours = _elapsedSeconds ~/ 3600;
-    final minutes = (_elapsedSeconds % 3600) ~/ 60;
-    final seconds = _elapsedSeconds % 60;
+    final hours = _displayElapsedSeconds ~/ 3600;
+    final minutes = (_displayElapsedSeconds % 3600) ~/ 60;
+    final seconds = _displayElapsedSeconds % 60;
 
     if (hours > 0) {
       return '${hours.toString().padLeft(2, '0')}:'
@@ -320,31 +389,38 @@ class _TrackingScreenState extends State<TrackingScreen> {
         '${seconds.toString().padLeft(2, '0')}';
   }
 
-  String _formatGrace(Duration remaining) {
-    final minutes = remaining.inMinutes;
-    final seconds = remaining.inSeconds.remainder(60);
-    return '${minutes.toString().padLeft(2, '0')}:'
-        '${seconds.toString().padLeft(2, '0')}';
-  }
-
   @override
   void dispose() {
     _timer?.cancel();
     _positionSubscription?.cancel();
-    WakelockPlus.disable();
+    if (!widget.automaticRideViewOnly) {
+      WakelockPlus.disable();
+    }
     super.dispose();
+  }
+
+  void _closeScreen() {
+    final onClose = widget.onClose;
+    if (onClose != null) {
+      onClose();
+    } else {
+      Navigator.pop(context);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final startProgress = _rideGate.startHoldProgress(now);
-    final graceRemaining = _rideGate.stopGraceRemaining(now);
+    final currentPosition = widget.automaticRideViewOnly
+        ? _automaticTracking.activeCurrentPosition
+        : _lastPosition;
+    final routePoints = widget.automaticRideViewOnly
+        ? _automaticTracking.activeRoutePoints
+        : _mapRoutePoints;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _isRiding ? 'Current Ride' : 'Waiting to Ride',
+          'Current Ride',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
@@ -353,19 +429,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
         child: Column(
           children: [
             const SizedBox(height: 10),
-            if (!_isRiding) _buildDetectingBanner(startProgress),
-            if (_isRiding && graceRemaining != null)
-              _buildStopGraceBanner(graceRemaining),
             SizedBox(
               height: 280,
               child: RideMapWidget(
-                routePoints: _mapRoutePoints,
-                currentLocation: _lastPosition == null
+                routePoints: routePoints,
+                currentLocation: currentPosition == null
                     ? null
-                    : LatLng(_lastPosition!.latitude, _lastPosition!.longitude),
-                currentLocationTimestamp: _lastPosition?.timestamp,
-                currentLocationAccuracyMeters: _lastPosition?.accuracy,
-                followLocation: _autoFollow,
+                    : LatLng(
+                        currentPosition.latitude,
+                        currentPosition.longitude,
+                      ),
+                currentLocationTimestamp: currentPosition?.timestamp,
+                currentLocationAccuracyMeters: currentPosition?.accuracy,
+                followLocation: widget.automaticRideViewOnly || _autoFollow,
                 initialZoom: 15,
               ),
             ),
@@ -379,8 +455,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     const SizedBox(height: 10),
                     Text(
                       (_isMetric
-                              ? _currentSpeed
-                              : SettingsService.kmhToMph(_currentSpeed))
+                              ? _displayCurrentSpeed
+                              : SettingsService.kmhToMph(_displayCurrentSpeed))
                           .toStringAsFixed(1),
                       style: const TextStyle(
                         fontSize: 50,
@@ -401,7 +477,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 Expanded(
                   child: _statCard(
                     Icons.route,
-                    SettingsService.formatDistance(_distance, _isMetric),
+                    SettingsService.formatDistance(_displayDistance, _isMetric),
                     'Distance',
                   ),
                 ),
@@ -417,7 +493,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 Expanded(
                   child: _statCard(
                     Icons.speed,
-                    SettingsService.formatSpeed(_averageSpeed, _isMetric),
+                    SettingsService.formatSpeed(
+                      _displayAverageSpeed,
+                      _isMetric,
+                    ),
                     'Average',
                   ),
                 ),
@@ -425,7 +504,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 Expanded(
                   child: _statCard(
                     Icons.flash_on,
-                    SettingsService.formatSpeed(_maxSpeed, _isMetric),
+                    SettingsService.formatSpeed(_displayMaxSpeed, _isMetric),
                     'Max Speed',
                   ),
                 ),
@@ -437,7 +516,32 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 padding: EdgeInsets.only(bottom: 20),
                 child: CircularProgressIndicator(),
               ),
-            if (_isRiding) ...[
+            if (_isRiding && widget.automaticRideViewOnly) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.radio_button_checked,
+                        color: Color(0xFFD6A06A),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Automatic ride recording is active.',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _closeScreen,
+                        child: const Text('HOME'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ] else if (_isRiding) ...[
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -471,7 +575,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 width: double.infinity,
                 height: 55,
                 child: OutlinedButton.icon(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: _closeScreen,
                   icon: const Icon(Icons.close),
                   label: const Text(
                     'CANCEL MONITORING',
@@ -482,59 +586,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
             ],
             const SizedBox(height: 10),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetectingBanner(double progress) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'RIDING starts automatically',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Speed must stay above ${tripStartSpeedKmh.toStringAsFixed(0)} km/h '
-                'for ${tripStartHoldDuration.inSeconds}s with accurate GPS. '
-                'A single spike will not start the trip.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 12),
-              LinearProgressIndicator(
-                value: progress,
-                minHeight: 6,
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStopGraceBanner(Duration remaining) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            'Stationary — trip ends in ${_formatGrace(remaining)} '
-            'if you stay below ${tripStopSpeedKmh.toStringAsFixed(0)} km/h. '
-            'Traffic under ${tripStartSpeedKmh.toStringAsFixed(0)} km/h will not end the ride.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 13),
-          ),
         ),
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart' as ride;
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
@@ -16,8 +17,13 @@ class RideMapWidget extends StatefulWidget {
     this.followLocation = false,
     this.fitRoute = false,
     this.showRouteEndpoints = false,
+    this.showRecenterButton = false,
+    this.captureGestures = false,
     this.initialZoom = 15,
+    this.initialCameraTarget,
+    this.styleString,
     this.onMapReady,
+    this.onRecenter,
   });
 
   final List<ride.LatLng> routePoints;
@@ -27,10 +33,15 @@ class RideMapWidget extends StatefulWidget {
   final bool followLocation;
   final bool fitRoute;
   final bool showRouteEndpoints;
+  final bool showRecenterButton;
+  final bool captureGestures;
   final double initialZoom;
+  final ride.LatLng? initialCameraTarget;
+  final String? styleString;
 
   /// Called after the style, route annotations, and initial camera are ready.
   final ValueChanged<ml.MapLibreMapController>? onMapReady;
+  final VoidCallback? onRecenter;
 
   @override
   State<RideMapWidget> createState() => _RideMapWidgetState();
@@ -340,36 +351,86 @@ class _RideMapWidgetState extends State<RideMapWidget> {
   ml.LatLng _toMapLibre(ride.LatLng point) =>
       ml.LatLng(point.latitude, point.longitude);
 
+  Future<void> _recenterOnCurrentLocation() async {
+    final location = _validCurrentLocation();
+    final controller = _controller;
+    if (location == null || controller == null) return;
+
+    await controller.animateCamera(
+      ml.CameraUpdate.newLatLngZoom(_toMapLibre(location), 15),
+      duration: const Duration(milliseconds: 350),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final validLocation = _validCurrentLocation();
     final route = _validRoutePoints(widget.routePoints);
     final initialCenter =
+        widget.initialCameraTarget ??
         validLocation ??
         (route.isNotEmpty ? route.first : null) ??
         const ride.LatLng(17.3850, 78.4867);
 
+    final map = ml.MapLibreMap(
+      initialCameraPosition: ml.CameraPosition(
+        target: _toMapLibre(initialCenter),
+        zoom: widget.initialZoom,
+      ),
+      styleString:
+          widget.styleString ??
+          (theme.brightness == Brightness.dark
+              ? MapStyleConfig.darkStyleUrl
+              : MapStyleConfig.lightStyleUrl),
+      compassEnabled: true,
+      rotateGesturesEnabled: true,
+      scrollGesturesEnabled: true,
+      zoomGesturesEnabled: true,
+      tiltGesturesEnabled: true,
+      gestureRecognizers: widget.captureGestures
+          ? <Factory<OneSequenceGestureRecognizer>>{
+              Factory<OneSequenceGestureRecognizer>(
+                () => EagerGestureRecognizer(),
+              ),
+            }
+          : null,
+      myLocationEnabled: false,
+      attributionButtonPosition: ml.AttributionButtonPosition.bottomRight,
+      onMapCreated: _onMapCreated,
+      onStyleLoadedCallback: _onStyleLoaded,
+    );
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
-      child: ml.MapLibreMap(
-        initialCameraPosition: ml.CameraPosition(
-          target: _toMapLibre(initialCenter),
-          zoom: widget.initialZoom,
-        ),
-        styleString: theme.brightness == Brightness.dark
-            ? MapStyleConfig.darkStyleUrl
-            : MapStyleConfig.lightStyleUrl,
-        compassEnabled: true,
-        rotateGesturesEnabled: true,
-        scrollGesturesEnabled: true,
-        zoomGesturesEnabled: true,
-        tiltGesturesEnabled: true,
-        myLocationEnabled: false,
-        attributionButtonPosition: ml.AttributionButtonPosition.bottomRight,
-        onMapCreated: _onMapCreated,
-        onStyleLoadedCallback: _onStyleLoaded,
-      ),
+      child: !widget.showRecenterButton
+          ? map
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                map,
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: Material(
+                    color: const Color(0xFF211510).withValues(alpha: 0.9),
+                    shape: const CircleBorder(
+                      side: BorderSide(color: Color(0xFF3B2820)),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: IconButton(
+                      onPressed:
+                          widget.onRecenter ?? _recenterOnCurrentLocation,
+                      tooltip: 'Current location',
+                      icon: const Icon(
+                        Icons.my_location,
+                        color: Color(0xFFD6A06A),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
