@@ -29,7 +29,11 @@ void main() {
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     NotificationService.instance.onNotificationTap = _handleNotificationTap;
 
-    await NotificationService.instance.initialize();
+    try {
+      await NotificationService.instance.initialize();
+    } catch (error) {
+      debugPrint('[RideNotification] Initialization failed: $error');
+    }
   });
 }
 

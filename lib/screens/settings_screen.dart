@@ -56,12 +56,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Enable Automatic Tracking?'),
+        title: const Text('Enable Background Ride Tracking?'),
         content: const Text(
-          'RideForge will continuously monitor your location in the '
-          'background to automatically detect your rides.\n\n'
-          'This feature consumes more battery because location monitoring '
-          'continues even when the app is not open.\n\n'
+          'Automatically detects and records rides while RideForge is '
+          'running in the background. You can lock your phone and use other '
+          'apps while tracking continues.\n\n'
+          'Keep RideForge running in the background for reliable automatic '
+          'tracking. Do not force-close the app.\n\n'
+          'This feature uses more battery. '
           'Android may ask you to allow location access "All the time".',
         ),
         actions: [
@@ -92,9 +94,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (context) => AlertDialog(
           title: const Text('Background Location Required'),
           content: const Text(
-            'To automatically detect rides while RideForge is '
-            'closed or minimized, Android needs location access '
-            '"All the time".\n\n'
+            'To detect rides while RideForge is running in the background, '
+            'Android needs location access "All the time". You can lock your '
+            'phone or use other apps, but do not force-close RideForge.\n\n'
             'Please enable it in Android Settings.',
           ),
           actions: [
@@ -130,7 +132,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Unable to start automatic tracking.',
+            'Unable to start Background Ride Tracking.',
           ),
         ),
       );
@@ -147,7 +149,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Automatic Tracking is now active.',
+          'Background Ride Tracking is now active.',
         ),
         duration: Duration(seconds: 2),
       ),
@@ -166,7 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Automatic Tracking disabled.',
+          'Background Ride Tracking disabled.',
         ),
         duration: Duration(seconds: 2),
       ),
@@ -259,14 +261,29 @@ SwitchListTile(
     Icons.radar,
     color: Colors.orangeAccent,
   ),
-  title: const Text('Automatic Trip Detection'),
-  subtitle: Text(
-    _automaticTracking
-        ? 'Automatically detect rides in the background'
-        : 'Automatically detect rides while monitoring is enabled',
+  title: const Text('Background Ride Tracking'),
+  subtitle: const Text(
+    'Automatically detects and records rides while RideForge is running in the background.',
   ),
   value: _automaticTracking,
   onChanged: _toggleAutomaticTracking,
+),
+
+const Padding(
+  padding: EdgeInsets.fromLTRB(72, 0, 16, 12),
+  child: Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Icon(Icons.info_outline, size: 18, color: Colors.orangeAccent),
+      SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          'Keep RideForge running in the background for reliable automatic tracking. Do not force-close the app.',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+      ),
+    ],
+  ),
 ),
 
 if (_automaticTracking)
@@ -315,7 +332,7 @@ SwitchListTile(
   ),
   title: const Text('Background Location Tracking'),
   subtitle: const Text(
-    'Background monitoring will activate when Automatic Trip Detection is enabled',
+    'Background monitoring will activate when Background Ride Tracking is enabled',
   ),
   trailing: Icon(
     _automaticTracking

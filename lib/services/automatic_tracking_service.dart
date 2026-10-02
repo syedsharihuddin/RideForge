@@ -171,7 +171,7 @@ class AutomaticTrackingService extends ChangeNotifier {
         distanceFilter: 5,
         intervalDuration: const Duration(seconds: 1),
         foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: '🏍️ RideForge Automatic Tracking',
+          notificationTitle: '🏍️ RideForge Background Ride Tracking',
           notificationText: 'Monitoring for rides in the background',
           enableWakeLock: false,
         ),
@@ -269,8 +269,10 @@ class AutomaticTrackingService extends ChangeNotifier {
       // Notification failure must never break tracking.
       try {
         await NotificationService.instance.showRideStarted();
-      } catch (_) {
-        // Ignore notification errors.
+      } catch (error) {
+        debugPrint(
+          '[RideNotification] Ride started notification failed: $error',
+        );
       }
     }
 
@@ -412,11 +414,14 @@ class AutomaticTrackingService extends ChangeNotifier {
           durationSeconds: duration.inSeconds,
           maxSpeedKmh: rideMaxSpeed,
         );
-      } catch (_) {
-        // Ignore notification errors.
+      } catch (error) {
+        debugPrint(
+          '[RideNotification] Ride complete notification failed: $error',
+        );
       }
-    } catch (_) {
+    } catch (error) {
       // Keep automatic tracking alive even if saving fails.
+      debugPrint('[AutomaticTracking] Ride save failed: $error');
     } finally {
       _savingRide = false;
     }

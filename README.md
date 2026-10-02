@@ -57,12 +57,13 @@
 ### ⚙️ Settings Screen
 - **Unit Toggle**: Metric (`km`, `km/h`) ↔ Imperial (`mi`, `mph`) — affects all screens live
 - **Keep Screen Awake** toggle using `wakelock_plus`
-- **Background Location Tracking** with persistent Android notification
+- **Background Ride Tracking** detects and records rides while RideForge is running in the background
 - **Clear All Ride History** with safety confirmation
 
 ### 🔋 Background Tracking & Reliability
 - Android **Foreground Service** keeps GPS active when screen is locked or app is minimized
 - Persistent notification: *"🏍️ Bike Tracker Active - Tracking your ride in the background"*
+- Keep RideForge running in the background for reliable automatic tracking. Do not force-close the app.
 
 ### 🛡️ GPS Noise Filtering (No Fake Distance!)
 - **Accuracy gate**: ignores fixes with GPS error > 25m (common indoors)
