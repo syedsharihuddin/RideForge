@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 
 import '../models/ride.dart';
 import '../services/database_service.dart';
 import '../services/ride_share_card_service.dart';
+import '../theme/ride_forge_visuals.dart';
 import '../widgets/ride_map_widget.dart';
 
 class TripDetailsScreen extends StatefulWidget {
@@ -19,8 +21,19 @@ class TripDetailsScreen extends StatefulWidget {
 class _TripDetailsScreenState extends State<TripDetailsScreen> {
   final GlobalKey _routeMapKey = GlobalKey();
   ml.MapLibreMapController? _mapController;
+  late final List<LatLng> _validRoutePoints = List.unmodifiable(
+    widget.ride.routePoints.where(_isValidCoordinate),
+  );
   bool _mapReady = false;
   bool _sharing = false;
+
+  bool _isValidCoordinate(LatLng point) =>
+      point.latitude.isFinite &&
+      point.longitude.isFinite &&
+      point.latitude >= -90 &&
+      point.latitude <= 90 &&
+      point.longitude >= -180 &&
+      point.longitude <= 180;
 
   void _onMapReady(ml.MapLibreMapController controller) {
     if (!mounted) return;
@@ -131,20 +144,58 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // -----------------------------------------------------------------
-            // ROUTE MAP VIEW
-            // -----------------------------------------------------------------
-            SizedBox(
-              key: _routeMapKey,
-              height: 320,
-              child: RideMapWidget(
-                routePoints: ride.routePoints,
-                fitRoute: true,
-                showRouteEndpoints: true,
-                onMapReady: _onMapReady,
+            if (_validRoutePoints.isEmpty)
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                height: 220,
+                decoration: RideForgeVisuals.cardDecoration(highlighted: true),
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.map_outlined,
+                      size: 34,
+                      color: RideForgeVisuals.accent,
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Route map unavailable',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 4),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        'GPS route data was not recorded for this ride.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFFB9AAA2),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                key: _routeMapKey,
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                height: 400,
+                decoration: RideForgeVisuals.cardDecoration(
+                  color: Colors.transparent,
+                  radius: 18,
+                  highlighted: true,
+                ),
+                padding: const EdgeInsets.all(1),
+                child: RideMapWidget(
+                  routePoints: _validRoutePoints,
+                  fitRoute: true,
+                  showRouteEndpoints: true,
+                  showRouteControls: true,
+                  onMapReady: _onMapReady,
+                ),
               ),
-            ),
-
             // -----------------------------------------------------------------
             // DETAILS & STATS
             // -----------------------------------------------------------------
@@ -208,7 +259,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                       Expanded(
                         child: _detailCard(
                           icon: Icons.flash_on,
-                          title: 'Max Speed',
+                          title: 'Top Speed',
                           value: '${ride.maxSpeed.toStringAsFixed(1)} km/h',
                           color: Colors.amber,
                         ),
@@ -236,7 +287,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '${ride.routePoints.length} GPS trace points recorded',
+                                  '${_validRoutePoints.length} GPS trace points recorded',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey,
@@ -265,7 +316,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     required Color color,
   }) {
     return Card(
-      elevation: 2,
+      elevation: 4,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

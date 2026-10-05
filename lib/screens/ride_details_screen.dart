@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/ride.dart';
+import '../theme/ride_forge_visuals.dart';
 import '../widgets/ride_map_widget.dart';
 
 class RideDetailsScreen extends StatelessWidget {
@@ -32,6 +33,9 @@ class RideDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final validRoutePoints = ride.routePoints
+        .where(_isValidCoordinate)
+        .toList(growable: false);
     return Scaffold(
       appBar: AppBar(title: const Text('Ride Summary'), centerTitle: true),
       body: SafeArea(
@@ -93,12 +97,54 @@ class RideDetailsScreen extends StatelessWidget {
                   Expanded(
                     child: _StatCard(
                       icon: Icons.flash_on,
-                      label: 'Max Speed',
+                      label: 'Top Speed',
                       value: '${ride.maxSpeed.toStringAsFixed(0)} km/h',
                     ),
                   ),
                 ],
               ),
+
+              const SizedBox(height: 24),
+              const Text(
+                'Route',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              if (validRoutePoints.isEmpty)
+                Container(
+                  height: 220,
+                  width: double.infinity,
+                  decoration: RideForgeVisuals.cardDecoration(),
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.map_outlined,
+                        size: 34,
+                        color: Color(0xFFD6A06A),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        'Route map unavailable',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 4),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Text(
+                          'GPS route data was not recorded for this ride.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFFB9AAA2),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                _RoutePreview(points: validRoutePoints),
 
               const SizedBox(height: 24),
 
@@ -126,19 +172,6 @@ class RideDetailsScreen extends StatelessWidget {
                 title: 'Route Points',
                 value: '${ride.routePoints.length}',
               ),
-
-              if (ride.routePoints.isNotEmpty) ...[
-                const SizedBox(height: 24),
-
-                const Text(
-                  'Route',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-
-                const SizedBox(height: 12),
-
-                _RoutePreview(points: ride.routePoints),
-              ],
             ],
           ),
         ),
@@ -146,6 +179,14 @@ class RideDetailsScreen extends StatelessWidget {
     );
   }
 }
+
+bool _isValidCoordinate(LatLng point) =>
+    point.latitude.isFinite &&
+    point.longitude.isFinite &&
+    point.latitude >= -90 &&
+    point.latitude <= 90 &&
+    point.longitude >= -180 &&
+    point.longitude <= 180;
 
 class _StatCard extends StatelessWidget {
   final IconData icon;
@@ -223,13 +264,21 @@ class _RoutePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 220,
+    return Container(
+      height: 320,
       width: double.infinity,
-      child: RideMapWidget(
-        routePoints: points,
-        fitRoute: true,
-        showRouteEndpoints: true,
+      decoration: RideForgeVisuals.cardDecoration(
+        color: Colors.transparent,
+        highlighted: true,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(1),
+        child: RideMapWidget(
+          routePoints: points,
+          fitRoute: true,
+          showRouteEndpoints: true,
+          showRouteControls: true,
+        ),
       ),
     );
   }

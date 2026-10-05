@@ -10,6 +10,7 @@ import 'screens/history_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/ride_details_screen.dart';
+import 'screens/todays_journey_screen.dart';
 
 import 'services/database_service.dart';
 import 'services/settings_service.dart';
@@ -18,6 +19,7 @@ import 'services/automatic_tracking_service.dart';
 import 'config/map_style_config.dart';
 import 'services/location_service.dart';
 import 'widgets/ride_map_widget.dart';
+import 'theme/ride_forge_visuals.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -118,12 +120,12 @@ class _BikeTrackerAppState extends State<BikeTrackerApp>
         // ============================================================
         // DARK BROWN THEME
         // ============================================================
-        scaffoldBackgroundColor: const Color(0xFF120D0A),
+        scaffoldBackgroundColor: RideForgeVisuals.background,
 
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFB8754D),
-          secondary: Color(0xFFD6A06A),
-          surface: Color(0xFF211510),
+          primary: RideForgeVisuals.button,
+          secondary: RideForgeVisuals.accent,
+          surface: RideForgeVisuals.surface,
 
           onPrimary: Colors.white,
           onSecondary: Colors.black,
@@ -137,12 +139,13 @@ class _BikeTrackerAppState extends State<BikeTrackerApp>
         // CARDS
         // ============================================================
         cardTheme: CardThemeData(
-          color: const Color(0xFF211510),
-          elevation: 0,
+          color: RideForgeVisuals.surface,
+          elevation: 4,
+          shadowColor: Color(0x99FF4F1C),
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: Color(0xFF3B2820), width: 1),
+            side: BorderSide(color: RideForgeVisuals.border, width: 1.1),
           ),
         ),
 
@@ -150,7 +153,7 @@ class _BikeTrackerAppState extends State<BikeTrackerApp>
         // APP BAR
         // ============================================================
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF120D0A),
+          backgroundColor: RideForgeVisuals.background,
           foregroundColor: Color(0xFFF5EDE7),
           elevation: 0,
           centerTitle: false,
@@ -158,9 +161,9 @@ class _BikeTrackerAppState extends State<BikeTrackerApp>
             fontSize: 22,
             fontWeight: FontWeight.bold,
             color: Color(0xFFF5EDE7),
-            letterSpacing: 0.5,
+            letterSpacing: 0.9,
           ),
-          iconTheme: IconThemeData(color: Color(0xFFD6A06A)),
+          iconTheme: IconThemeData(color: RideForgeVisuals.accent),
         ),
 
         // ============================================================
@@ -170,7 +173,7 @@ class _BikeTrackerAppState extends State<BikeTrackerApp>
           backgroundColor: const Color(0xFF1A100C),
           elevation: 0,
 
-          indicatorColor: const Color(0xFFB8754D),
+          indicatorColor: RideForgeVisuals.button,
 
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
@@ -198,12 +201,12 @@ class _BikeTrackerAppState extends State<BikeTrackerApp>
         // ============================================================
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF8B5A3C),
+            backgroundColor: RideForgeVisuals.button,
             foregroundColor: Colors.white,
 
-            elevation: 3,
+            elevation: 4,
 
-            shadowColor: const Color(0xFFB8754D).withValues(alpha: 0.25),
+            shadowColor: RideForgeVisuals.glow.withValues(alpha: 0.45),
 
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -269,6 +272,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       AutomaticTrackingService.instance;
   final GlobalKey<_HomeScreenTabState> _homeKey =
       GlobalKey<_HomeScreenTabState>();
+  int _statsRefreshKey = 0;
   TrackingProgress _manualProgress = const TrackingProgress();
   bool _hasManualTrackingScreen = false;
   bool _showRideScreen = false;
@@ -343,6 +347,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _homeKey.currentState?._loadTodayStats();
   }
 
+  void _onHistoryRideDeleted() {
+    _homeKey.currentState?._loadTodayStats();
+    setState(() => _statsRefreshKey++);
+  }
+
   @override
   void dispose() {
     _automaticTracking.removeListener(_onAutomaticTrackingChanged);
@@ -381,8 +390,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               onStartRide: _startManualRideScreen,
               onViewRide: _viewActiveRide,
             ),
-            const HistoryScreen(),
-            const StatsScreen(),
+            HistoryScreen(onRideDeleted: _onHistoryRideDeleted),
+            StatsScreen(key: ValueKey(_statsRefreshKey)),
             _hasManualTrackingScreen
                 ? TrackingScreen(
                     onProgressChanged: _onManualProgressChanged,
@@ -765,7 +774,7 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
       appBar: AppBar(
         title: const Text(
           'RideForge',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1),
         ),
 
         actions: [
@@ -820,7 +829,7 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
             const SizedBox(height: 8),
 
             const Text(
-              'Recording starts automatically when speed stays above 20 km/h',
+              'Track every ride. Relive every route.',
               textAlign: TextAlign.center,
 
               style: TextStyle(fontSize: 15, color: Color(0xFFB9AAA2)),
@@ -831,33 +840,39 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
             // ==============================================================
             // LIVE MAP CARD
             // ==============================================================
-            Listener(
-              onPointerDown: _onHomeMapPointerDown,
-              child: Card(
-                elevation: 0,
-                clipBehavior: Clip.antiAlias,
-                child: SizedBox(
-                  height: 220,
-                  child: RideMapWidget(
-                    routePoints: const [],
-                    currentLocation: _currentPosition == null
-                        ? null
-                        : LatLng(
-                            _currentPosition!.latitude,
-                            _currentPosition!.longitude,
-                          ),
-                    currentLocationTimestamp: _currentPosition?.timestamp,
-                    currentLocationAccuracyMeters: _currentPosition?.accuracy,
-                    showRecenterButton: true,
-                    initialCameraTarget: const LatLng(22.5, 79.0),
-                    initialZoom: 3.5,
-                    styleString: MapStyleConfig.lightStyleUrl,
-                    captureGestures: true,
-                    onMapReady: (controller) {
-                      _mapController = controller;
-                      _startHomeMapIntroAnimation();
-                    },
-                    onRecenter: _recenterHomeMap,
+            Container(
+              decoration: RideForgeVisuals.cardDecoration(
+                radius: 18,
+                highlighted: true,
+              ),
+              padding: const EdgeInsets.all(1),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(17),
+                child: Listener(
+                  onPointerDown: _onHomeMapPointerDown,
+                  child: SizedBox(
+                    height: 260,
+                    child: RideMapWidget(
+                      routePoints: const [],
+                      currentLocation: _currentPosition == null
+                          ? null
+                          : LatLng(
+                              _currentPosition!.latitude,
+                              _currentPosition!.longitude,
+                            ),
+                      currentLocationTimestamp: _currentPosition?.timestamp,
+                      currentLocationAccuracyMeters: _currentPosition?.accuracy,
+                      showRecenterButton: true,
+                      initialCameraTarget: const LatLng(22.5, 79.0),
+                      initialZoom: 3.5,
+                      styleString: MapStyleConfig.lightStyleUrl,
+                      captureGestures: true,
+                      onMapReady: (controller) {
+                        _mapController = controller;
+                        _startHomeMapIntroAnimation();
+                      },
+                      onRecenter: _recenterHomeMap,
+                    ),
                   ),
                 ),
               ),
@@ -872,10 +887,24 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
               _activeRideCard()
             else
               SizedBox(
-                height: 58,
+                height: 68,
                 child: ElevatedButton.icon(
                   onPressed: widget.onStartRide,
-                  icon: const Icon(Icons.play_arrow, size: 28),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: RideForgeVisuals.button,
+                    foregroundColor: Colors.white,
+                    elevation: 5,
+                    shadowColor: RideForgeVisuals.glow.withValues(alpha: 0.5),
+                    side: const BorderSide(color: Color(0xFFFFB66E), width: 1),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(17),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.play_arrow,
+                    size: 28,
+                    color: Colors.white,
+                  ),
                   label: const Text(
                     'READY TO RIDE',
                     style: TextStyle(
@@ -910,7 +939,7 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
                   icon: const Icon(
                     Icons.refresh,
                     size: 20,
-                    color: Color(0xFFB8754D),
+                    color: RideForgeVisuals.accent,
                   ),
 
                   onPressed: _loadTodayStats,
@@ -942,6 +971,12 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
                     'Total Distance',
 
                     const Color(0xFFD6A06A),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const TodaysJourneyScreen(),
+                      ),
+                    ),
                   ),
                 ),
 
@@ -975,39 +1010,62 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
   // STAT CARD
   // ========================================================================
 
-  Widget _statCard(IconData icon, String value, String label, Color color) {
+  Widget _statCard(
+    IconData icon,
+    String value,
+    String label,
+    Color color, {
+    VoidCallback? onTap,
+  }) {
     return Card(
-      elevation: 0,
+      elevation: 3,
 
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
 
-        child: Column(
-          children: [
-            Icon(icon, size: 28, color: color),
-
-            const SizedBox(height: 10),
-
-            Text(
-              value,
-
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFFF5EDE7),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 28, color: color),
+                  if (onTap != null) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: color.withValues(alpha: 0.8),
+                    ),
+                  ],
+                ],
               ),
-            ),
 
-            const SizedBox(height: 4),
+              const SizedBox(height: 10),
 
-            Text(
-              label,
+              Text(
+                value,
 
-              textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFF5EDE7),
+                ),
+              ),
 
-              style: const TextStyle(fontSize: 12, color: Color(0xFFB9AAA2)),
-            ),
-          ],
+              const SizedBox(height: 4),
+
+              Text(
+                label,
+
+                textAlign: TextAlign.center,
+
+                style: const TextStyle(fontSize: 12, color: Color(0xFFB9AAA2)),
+              ),
+            ],
+          ),
         ),
       ),
     );

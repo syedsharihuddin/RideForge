@@ -119,7 +119,7 @@ class RideShareCard extends StatelessWidget {
                   ),
                   Expanded(
                     child: _ShareMetric(
-                      label: 'MAX SPEED',
+                      label: 'TOP SPEED',
                       value: '${ride.maxSpeed.toStringAsFixed(1)} km/h',
                     ),
                   ),

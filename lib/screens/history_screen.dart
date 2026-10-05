@@ -3,10 +3,20 @@ import 'package:intl/intl.dart';
 
 import '../models/ride.dart';
 import '../services/database_service.dart';
+import '../theme/ride_forge_visuals.dart';
 import 'trip_details_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  const HistoryScreen({
+    super.key,
+    this.loadRides,
+    this.deleteRide,
+    this.onRideDeleted,
+  });
+
+  final Future<List<Ride>> Function()? loadRides;
+  final Future<int> Function(int rideId)? deleteRide;
+  final VoidCallback? onRideDeleted;
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -24,7 +34,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   void _loadRides() {
     setState(() {
-      _ridesFuture = DatabaseService.instance.getAllRides();
+      _ridesFuture =
+          widget.loadRides?.call() ?? DatabaseService.instance.getAllRides();
     });
   }
 
@@ -32,8 +43,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Ride?'),
-        content: const Text('Are you sure you want to delete this ride?'),
+        title: const Text('Delete this ride?'),
+        content: const Text(
+          'This ride and its recorded route will be permanently deleted.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -49,8 +62,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
 
     if (confirmed == true) {
-      await DatabaseService.instance.deleteRide(id);
+      final deletedCount =
+          await (widget.deleteRide?.call(id) ??
+              DatabaseService.instance.deleteRide(id));
       if (!mounted) return;
+
+      if (deletedCount == 0) {
+        _loadRides();
+        return;
+      }
+
+      widget.onRideDeleted?.call();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -195,7 +217,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
       children: [
         Material(
           color: const Color(0xFF211510),
-          borderRadius: BorderRadius.circular(14),
+          elevation: 3,
+          shadowColor: RideForgeVisuals.glow.withValues(alpha: 0.2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: RideForgeVisuals.border),
+          ),
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
             onTap: () => _toggleDate(group.date),
@@ -220,24 +247,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (isToday || isYesterday) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            DateFormat('d MMMM yyyy').format(group.date),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.brown.shade200,
-                            ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${DateFormat('d MMMM yyyy').format(group.date)} • '
+                          '${group.rides.length} '
+                          '${group.rides.length == 1 ? 'ride' : 'rides'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.brown.shade200,
                           ),
-                        ],
+                        ),
                       ],
-                    ),
-                  ),
-                  Text(
-                    '${group.rides.length}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.brown.shade200,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -275,8 +295,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildRideCard(Ride ride) {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: RideForgeVisuals.border),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () async {
@@ -317,6 +340,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ],
                   ),
                   IconButton(
+                    key: ValueKey('delete-ride-${ride.id}'),
                     icon: const Icon(
                       Icons.delete_outline,
                       size: 20,
@@ -356,7 +380,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     color: Colors.green,
                   ),
                   _statItem(
-                    label: 'Max Speed',
+                    label: 'Top Speed',
                     value: '${ride.maxSpeed.toStringAsFixed(1)} km/h',
                     icon: Icons.flash_on,
                     color: Colors.amber,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
+
 import '../models/ride.dart';
 import '../services/database_service.dart';
 
@@ -93,10 +94,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
 
           content: Row(
             children: [
-              Icon(
-                Icons.check_circle,
-                color: Color(0xFFD6A06A),
-              ),
+              Icon(Icons.check_circle, color: Color(0xFFD6A06A)),
               SizedBox(width: 12),
 
               Text(
@@ -113,10 +111,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
         ),
       );
 
-      Navigator.popUntil(
-        context,
-        (route) => route.isFirst,
-      );
+      Navigator.popUntil(context, (route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
 
@@ -128,9 +123,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
         SnackBar(
           backgroundColor: const Color(0xFF7A3F36),
           behavior: SnackBarBehavior.floating,
-          content: Text(
-            'Failed to save ride: $e',
-          ),
+          content: Text('Failed to save ride: $e'),
         ),
       );
     }
@@ -145,9 +138,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
       context: context,
 
       builder: (context) => AlertDialog(
-        title: const Text(
-          'Discard Ride?',
-        ),
+        title: const Text('Discard Ride?'),
 
         content: const Text(
           'Are you sure you want to discard this ride? '
@@ -156,38 +147,24 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
 
         actions: [
           TextButton(
-            onPressed: () =>
-                Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, false),
 
-            child: const Text(
-              'CANCEL',
-              style: TextStyle(
-                color: goldAccent,
-              ),
-            ),
+            child: const Text('CANCEL', style: TextStyle(color: goldAccent)),
           ),
 
           TextButton(
-            style: TextButton.styleFrom(
-              foregroundColor: Color(0xFFD96C5F),
-            ),
+            style: TextButton.styleFrom(foregroundColor: Color(0xFFD96C5F)),
 
-            onPressed: () =>
-                Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, true),
 
-            child: const Text(
-              'DISCARD',
-            ),
+            child: const Text('DISCARD'),
           ),
         ],
       ),
     );
 
     if (shouldDiscard == true && mounted) {
-      Navigator.popUntil(
-        context,
-        (route) => route.isFirst,
-      );
+      Navigator.popUntil(context, (route) => route.isFirst);
     }
   }
 
@@ -197,20 +174,16 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dateFormat =
-        DateFormat('EEE, d MMM yyyy • h:mm a');
+    final dateFormat = DateFormat('EEE, d MMM yyyy • h:mm a');
 
-    final formattedStartTime =
-        dateFormat.format(widget.startTime);
+    final formattedStartTime = dateFormat.format(widget.startTime);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Ride Summary',
 
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
 
         automaticallyImplyLeading: false,
@@ -226,7 +199,6 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
             // ==========================================================
             // COMPLETED RIDE ICON
             // ==========================================================
-
             Container(
               width: 80,
               height: 80,
@@ -249,11 +221,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                 ],
               ),
 
-              child: const Icon(
-                Icons.flag,
-                size: 42,
-                color: goldAccent,
-              ),
+              child: const Icon(Icons.flag, size: 42, color: goldAccent),
             ),
 
             const SizedBox(height: 18),
@@ -273,10 +241,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
             Text(
               formattedStartTime,
 
-              style: const TextStyle(
-                fontSize: 14,
-                color: secondaryText,
-              ),
+              style: const TextStyle(fontSize: 14, color: secondaryText),
             ),
 
             const SizedBox(height: 30),
@@ -284,7 +249,6 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
             // ==========================================================
             // FIRST ROW OF STATS
             // ==========================================================
-
             Row(
               children: [
                 Expanded(
@@ -314,7 +278,6 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
             // ==========================================================
             // SECOND ROW OF STATS
             // ==========================================================
-
             Row(
               children: [
                 Expanded(
@@ -332,7 +295,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                   child: _statCard(
                     Icons.flash_on,
                     widget.maxSpeed.toStringAsFixed(1),
-                    'Max Speed (km/h)',
+                    'Top Speed (km/h)',
                     const Color(0xFFE0B078),
                   ),
                 ),
@@ -344,7 +307,6 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
             // ==========================================================
             // GPS POINTS BADGE
             // ==========================================================
-
             if (widget.routePoints.isNotEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -355,23 +317,16 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF211510),
 
-                  borderRadius:
-                      BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(20),
 
-                  border: Border.all(
-                    color: cardBorder,
-                  ),
+                  border: Border.all(color: cardBorder),
                 ),
 
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
 
                   children: [
-                    const Icon(
-                      Icons.location_on,
-                      size: 16,
-                      color: goldAccent,
-                    ),
+                    const Icon(Icons.location_on, size: 16, color: goldAccent),
 
                     const SizedBox(width: 6),
 
@@ -392,34 +347,27 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
             // ==========================================================
             // SAVE RIDE
             // ==========================================================
-
             SizedBox(
               width: double.infinity,
               height: 58,
 
               child: ElevatedButton.icon(
-                onPressed:
-                    _isSaving ? null : _saveRide,
+                onPressed: _isSaving ? null : _saveRide,
 
                 icon: _isSaving
                     ? const SizedBox(
                         width: 22,
                         height: 22,
 
-                        child:
-                            CircularProgressIndicator(
+                        child: CircularProgressIndicator(
                           strokeWidth: 2.5,
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(
-                        Icons.save,
-                      ),
+                    : const Icon(Icons.save),
 
                 label: Text(
-                  _isSaving
-                      ? 'SAVING RIDE...'
-                      : 'SAVE RIDE',
+                  _isSaving ? 'SAVING RIDE...' : 'SAVE RIDE',
 
                   style: const TextStyle(
                     fontSize: 17,
@@ -434,27 +382,20 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
             // ==========================================================
             // DISCARD RIDE
             // ==========================================================
-
             SizedBox(
               width: double.infinity,
               height: 52,
 
               child: OutlinedButton(
-                onPressed:
-                    _isSaving ? null : _confirmDiscard,
+                onPressed: _isSaving ? null : _confirmDiscard,
 
                 style: OutlinedButton.styleFrom(
-                  foregroundColor:
-                      const Color(0xFFD96C5F),
+                  foregroundColor: const Color(0xFFD96C5F),
 
-                  side: const BorderSide(
-                    color: Color(0xFF7A443D),
-                    width: 1.2,
-                  ),
+                  side: const BorderSide(color: Color(0xFF7A443D), width: 1.2),
 
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
 
@@ -479,12 +420,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
   // STAT CARD
   // ============================================================
 
-  Widget _statCard(
-    IconData icon,
-    String value,
-    String label,
-    Color iconColor,
-  ) {
+  Widget _statCard(IconData icon, String value, String label, Color iconColor) {
     return Card(
       elevation: 0,
 
@@ -493,11 +429,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
 
         child: Column(
           children: [
-            Icon(
-              icon,
-              size: 32,
-              color: iconColor,
-            ),
+            Icon(icon, size: 32, color: iconColor),
 
             const SizedBox(height: 10),
 
@@ -520,10 +452,7 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
 
               textAlign: TextAlign.center,
 
-              style: const TextStyle(
-                fontSize: 12,
-                color: secondaryText,
-              ),
+              style: const TextStyle(fontSize: 12, color: secondaryText),
             ),
           ],
         ),

@@ -3,9 +3,13 @@ import 'package:intl/intl.dart';
 
 import '../models/ride.dart';
 import '../services/database_service.dart';
+import '../theme/ride_forge_visuals.dart';
 
 class StatsScreen extends StatefulWidget {
-  const StatsScreen({super.key});
+  const StatsScreen({super.key, this.loadTotalStats, this.loadRides});
+
+  final Future<Map<String, dynamic>> Function()? loadTotalStats;
+  final Future<List<Ride>> Function()? loadRides;
 
   @override
   State<StatsScreen> createState() => _StatsScreenState();
@@ -21,8 +25,12 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Future<_StatsData> _loadStats() async {
-    final totalStats = await DatabaseService.instance.getTotalStats();
-    final rides = await DatabaseService.instance.getAllRides();
+    final totalStats =
+        await (widget.loadTotalStats?.call() ??
+            DatabaseService.instance.getTotalStats());
+    final rides =
+        await (widget.loadRides?.call() ??
+            DatabaseService.instance.getAllRides());
     return _StatsData.fromRides(totalStats, rides, DateTime.now());
   }
 
@@ -202,14 +210,14 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget _overviewCard(_StatsData stats) {
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-      decoration: BoxDecoration(
+      decoration: RideForgeVisuals.cardDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF513522), Color(0xFF2B1C14)],
+          colors: [Color(0xFF402213), Color(0xFF21110B)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFF80583B)),
+        radius: 22,
+        highlighted: true,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -296,11 +304,7 @@ class _StatsScreenState extends State<StatsScreen> {
     return Container(
       constraints: const BoxConstraints(minHeight: 116),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF211510),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF39261C)),
-      ),
+      decoration: RideForgeVisuals.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -334,11 +338,7 @@ class _StatsScreenState extends State<StatsScreen> {
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF211510),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF39261C)),
-      ),
+      decoration: RideForgeVisuals.cardDecoration(),
       child: Row(
         children: [
           Expanded(
@@ -574,6 +574,7 @@ class _ChartItem {
   double distanceKm = 0;
   int rides = 0;
   int durationSeconds = 0;
+  double topSpeed = 0;
 
   _ChartItem({
     required this.label,
@@ -585,7 +586,13 @@ class _ChartItem {
     distanceKm += ride.distance;
     rides++;
     durationSeconds += ride.durationSeconds;
+    if (ride.maxSpeed.isFinite && ride.maxSpeed > topSpeed) {
+      topSpeed = ride.maxSpeed;
+    }
   }
+
+  double? get averageSpeedKmh =>
+      durationSeconds > 0 ? distanceKm / (durationSeconds / 3600) : null;
 }
 
 class _DistanceBarChart extends StatefulWidget {
@@ -662,11 +669,7 @@ class _DistanceBarChartState extends State<_DistanceBarChart> {
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 15, 16, 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF211510),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF39261C)),
-      ),
+      decoration: RideForgeVisuals.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -841,10 +844,10 @@ class _DistanceBarChartState extends State<_DistanceBarChart> {
       key: key,
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
-      decoration: BoxDecoration(
+      decoration: RideForgeVisuals.cardDecoration(
         color: const Color(0xFF2B1C14),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF80583B)),
+        radius: 12,
+        highlighted: true,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -874,6 +877,16 @@ class _DistanceBarChartState extends State<_DistanceBarChart> {
                 _detailValue(
                   'Riding time',
                   _formatDuration(item.durationSeconds),
+                ),
+              if (item.averageSpeedKmh case final averageSpeed?)
+                _detailValue(
+                  'Average speed',
+                  '${averageSpeed.toStringAsFixed(1)} km/h',
+                ),
+              if (item.topSpeed > 0)
+                _detailValue(
+                  'Top Speed',
+                  '${item.topSpeed.toStringAsFixed(1)} km/h',
                 ),
             ],
           ),
@@ -907,10 +920,7 @@ class _NoRidesMessage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF211510),
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: RideForgeVisuals.cardDecoration(),
       child: const Row(
         children: [
           Icon(Icons.two_wheeler, color: Color(0xFFD6A06A), size: 26),

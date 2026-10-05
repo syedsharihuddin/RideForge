@@ -505,7 +505,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   child: _statCard(
                     Icons.flash_on,
                     SettingsService.formatSpeed(_displayMaxSpeed, _isMetric),
-                    'Max Speed',
+                    'Top Speed',
                   ),
                 ),
               ],

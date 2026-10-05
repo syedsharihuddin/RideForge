@@ -1,5 +1,6 @@
 /// Central ride auto-start / auto-end thresholds.
 /// Change values here only — tracking logic reads these constants.
+library;
 
 /// Trip recording starts only when speed is strictly above this value (km/h).
 /// Speed at or below this value must never start a trip.
