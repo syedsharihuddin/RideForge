@@ -770,11 +770,16 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final mapHeight = (screenHeight * 0.43).clamp(280.0, 380.0).toDouble();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'RideForge',
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1),
+          'Track every ride. Relive every route.',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
         ),
 
         actions: [
@@ -810,32 +815,7 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
 
           children: [
-            const SizedBox(height: 20),
-
-            // ==============================================================
-            // WELCOME HEADER
-            // ==============================================================
-            const Text(
-              'Ready to Ride?',
-              textAlign: TextAlign.center,
-
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFFF5EDE7),
-              ),
-            ),
-
             const SizedBox(height: 8),
-
-            const Text(
-              'Track every ride. Relive every route.',
-              textAlign: TextAlign.center,
-
-              style: TextStyle(fontSize: 15, color: Color(0xFFB9AAA2)),
-            ),
-
-            const SizedBox(height: 35),
 
             // ==============================================================
             // LIVE MAP CARD
@@ -851,7 +831,7 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
                 child: Listener(
                   onPointerDown: _onHomeMapPointerDown,
                   child: SizedBox(
-                    height: 260,
+                    height: mapHeight,
                     child: RideMapWidget(
                       routePoints: const [],
                       currentLocation: _currentPosition == null
@@ -878,7 +858,23 @@ class _HomeScreenTabState extends State<HomeScreenTab> {
               ),
             ),
 
-            const SizedBox(height: 28),
+            const SizedBox(height: 24),
+
+            // ==============================================================
+            // WELCOME HEADER
+            // ==============================================================
+            const Text(
+              'Ready to Ride?',
+              textAlign: TextAlign.center,
+
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFFF5EDE7),
+              ),
+            ),
+
+            const SizedBox(height: 16),
 
             // ==============================================================
             // START RIDE BUTTON

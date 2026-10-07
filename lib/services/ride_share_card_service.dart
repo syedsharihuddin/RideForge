@@ -1,11 +1,10 @@
-import 'dart:typed_data';
-
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart' as ride;
-import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:share_plus/share_plus.dart';
 
 import '../models/ride.dart';
@@ -14,21 +13,61 @@ import '../widgets/ride_share_card.dart';
 class RideShareCardService {
   const RideShareCardService._();
 
+  static const _snapshotChannel = MethodChannel(
+    'com.example.bike/ride_share_map_snapshot',
+  );
+  static const _snapshotWidth = 1000;
+  static const _snapshotHeight = 582;
+
+  /// Creates a share-only map image without the native branding overlays.
+  /// The map's required provider credits are printed in the card footer.
+  static Future<Uint8List> captureMapSnapshot({
+    required List<ride.LatLng> routePoints,
+    required String styleUrl,
+  }) async {
+    final points = routePoints
+        .where(_isValidCoordinate)
+        .toList(growable: false);
+    if (points.isEmpty) {
+      throw StateError('Ride has no valid GPS points to share.');
+    }
+
+    var minLatitude = points.first.latitude;
+    var maxLatitude = minLatitude;
+    var minLongitude = points.first.longitude;
+    var maxLongitude = minLongitude;
+    for (final point in points.skip(1)) {
+      minLatitude = math.min(minLatitude, point.latitude);
+      maxLatitude = math.max(maxLatitude, point.latitude);
+      minLongitude = math.min(minLongitude, point.longitude);
+      maxLongitude = math.max(maxLongitude, point.longitude);
+    }
+
+    final bytes = await _snapshotChannel.invokeMethod<Uint8List>('capture', {
+      'width': _snapshotWidth,
+      'height': _snapshotHeight,
+      'styleUrl': styleUrl,
+      'routePoints': points
+          .map((point) => [point.longitude, point.latitude])
+          .toList(growable: false),
+      'south': minLatitude,
+      'north': maxLatitude,
+      'west': minLongitude,
+      'east': maxLongitude,
+    });
+    if (bytes == null || bytes.isEmpty) {
+      throw StateError('Ride map snapshot could not be generated.');
+    }
+    return bytes;
+  }
+
   static Future<void> share({
     required BuildContext context,
     required Ride ride,
     required Uint8List mapPng,
-    required ml.MapLibreMapController mapController,
-    required Size mapViewSize,
   }) async {
-    final composedMap = await _drawSavedRoute(
-      mapPng: mapPng,
-      routePoints: ride.routePoints,
-      mapController: mapController,
-      mapViewSize: mapViewSize,
-    );
     if (!context.mounted) return;
-    await precacheImage(MemoryImage(composedMap), context);
+    await precacheImage(MemoryImage(mapPng), context);
     if (!context.mounted) return;
 
     final key = GlobalKey();
@@ -39,7 +78,7 @@ class RideShareCardService {
         top: 0,
         child: RepaintBoundary(
           key: key,
-          child: RideShareCard(ride: ride, mapPng: composedMap),
+          child: RideShareCard(ride: ride, mapPng: mapPng),
         ),
       ),
     );
@@ -53,6 +92,7 @@ class RideShareCardService {
         throw StateError('Ride share card was not rendered.');
       }
 
+      // The card is 432×540 logical pixels; 2.5× yields a 1080×1350 PNG.
       final image = await renderObject.toImage(pixelRatio: 2.5);
       try {
         final pngData = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -76,167 +116,6 @@ class RideShareCardService {
     }
   }
 
-  static Future<Uint8List> _drawSavedRoute({
-    required Uint8List mapPng,
-    required List<ride.LatLng> routePoints,
-    required ml.MapLibreMapController mapController,
-    required Size mapViewSize,
-  }) async {
-    final points = routePoints
-        .where(_isValidCoordinate)
-        .toList(growable: false);
-    if (mapViewSize.width <= 0 || mapViewSize.height <= 0) {
-      throw StateError('Ride map has an invalid size.');
-    }
-    final codec = await ui.instantiateImageCodec(mapPng);
-    final frame = await codec.getNextFrame();
-    final baseMap = frame.image;
-
-    try {
-      if (points.isEmpty) return mapPng;
-
-      final projected = await mapController.toScreenLocationBatch(
-        points.map((point) => ml.LatLng(point.latitude, point.longitude)),
-      );
-      final routePixels = projected
-          .map(
-            (point) => point.x.isFinite && point.y.isFinite
-                ? Offset(point.x.toDouble(), point.y.toDouble())
-                : null,
-          )
-          .toList(growable: false);
-      if (routePixels.every((point) => point == null)) return mapPng;
-
-      final scaleX = baseMap.width / mapViewSize.width;
-      final scaleY = baseMap.height / mapViewSize.height;
-      final pixelScale = (scaleX + scaleY) / 2;
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      final mapBounds = Rect.fromLTWH(
-        0,
-        0,
-        baseMap.width.toDouble(),
-        baseMap.height.toDouble(),
-      );
-      canvas
-        ..clipRect(mapBounds)
-        ..drawImage(baseMap, Offset.zero, Paint());
-
-      if (routePixels.length >= 2) {
-        final routePath = Path();
-        var segmentStarted = false;
-        for (final point in routePixels) {
-          if (point == null) {
-            segmentStarted = false;
-          } else if (segmentStarted) {
-            routePath.lineTo(point.dx, point.dy);
-          } else {
-            routePath.moveTo(point.dx, point.dy);
-            segmentStarted = true;
-          }
-        }
-        canvas.drawPath(
-          routePath,
-          Paint()
-            ..color = const Color(0xFFD6A06A)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 5 * pixelScale
-            ..strokeCap = StrokeCap.round
-            ..strokeJoin = StrokeJoin.round
-            ..isAntiAlias = true,
-        );
-      }
-
-      final start = routePixels.first;
-      final end = routePixels.last;
-      if (start != null &&
-          end != null &&
-          (points.length == 1 || _sameCoordinate(points.first, points.last))) {
-        // Keep both endpoints visible while anchoring both at the same GPS
-        // coordinate for a one-point or closed route.
-        _drawEndpoint(
-          canvas,
-          start,
-          const Color(0xFFE05D5D),
-          8.5 * pixelScale,
-          2 * pixelScale,
-        );
-        _drawEndpoint(
-          canvas,
-          end,
-          const Color(0xFF46B978),
-          4.5 * pixelScale,
-          2 * pixelScale,
-        );
-      } else {
-        if (start != null) {
-          _drawEndpoint(
-            canvas,
-            start,
-            const Color(0xFFE05D5D),
-            7 * pixelScale,
-            2 * pixelScale,
-          );
-        }
-        if (end != null) {
-          _drawEndpoint(
-            canvas,
-            end,
-            const Color(0xFF46B978),
-            7 * pixelScale,
-            2 * pixelScale,
-          );
-        }
-      }
-
-      final picture = recorder.endRecording();
-      final composedImage = await picture.toImage(
-        baseMap.width,
-        baseMap.height,
-      );
-      try {
-        final bytes = await composedImage.toByteData(
-          format: ui.ImageByteFormat.png,
-        );
-        if (bytes == null) {
-          throw StateError('Could not encode the route map image.');
-        }
-        return bytes.buffer.asUint8List();
-      } finally {
-        composedImage.dispose();
-        picture.dispose();
-      }
-    } finally {
-      baseMap.dispose();
-      codec.dispose();
-    }
-  }
-
-  static void _drawEndpoint(
-    Canvas canvas,
-    Offset point,
-    Color color,
-    double radius,
-    double borderWidth,
-  ) {
-    canvas.drawCircle(
-      point,
-      radius,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.fill
-        ..isAntiAlias = true,
-    );
-    canvas.drawCircle(
-      point,
-      radius - borderWidth,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.fill
-        ..isAntiAlias = true,
-    );
-  }
-
   static bool _isValidCoordinate(ride.LatLng point) =>
       point.latitude.isFinite &&
       point.longitude.isFinite &&
@@ -244,7 +123,4 @@ class RideShareCardService {
       point.latitude <= 90 &&
       point.longitude >= -180 &&
       point.longitude <= 180;
-
-  static bool _sameCoordinate(ride.LatLng first, ride.LatLng last) =>
-      first.latitude == last.latitude && first.longitude == last.longitude;
 }

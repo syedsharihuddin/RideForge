@@ -41,6 +41,7 @@ kotlin {
 }
 
 dependencies {
+    implementation("org.maplibre.gl:android-sdk-opengl:13.5.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 

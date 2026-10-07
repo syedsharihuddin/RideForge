@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 
+import '../config/map_style_config.dart';
 import '../models/ride.dart';
 import '../services/database_service.dart';
 import '../services/ride_share_card_service.dart';
@@ -19,7 +20,6 @@ class TripDetailsScreen extends StatefulWidget {
 }
 
 class _TripDetailsScreenState extends State<TripDetailsScreen> {
-  final GlobalKey _routeMapKey = GlobalKey();
   ml.MapLibreMapController? _mapController;
   late final List<LatLng> _validRoutePoints = List.unmodifiable(
     widget.ride.routePoints.where(_isValidCoordinate),
@@ -49,21 +49,16 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
 
     setState(() => _sharing = true);
     try {
-      final renderObject = _routeMapKey.currentContext?.findRenderObject();
-      if (renderObject is! RenderBox || !renderObject.hasSize) {
-        throw StateError('Ride map is not ready to share.');
-      }
-
-      // MapLibre's snapshotter uses only the style and camera. Render the
-      // saved route and its endpoints into the exported map image separately.
-      final mapPng = await controller.takeSnapshot();
+      // Fit every saved GPS point to the share snapshot's wide viewport.
+      final mapPng = await RideShareCardService.captureMapSnapshot(
+        routePoints: widget.ride.routePoints,
+        styleUrl: MapStyleConfig.lightStyleUrl,
+      );
       if (!mounted) return;
       await RideShareCardService.share(
         context: context,
         ride: widget.ride,
         mapPng: mapPng,
-        mapController: controller,
-        mapViewSize: renderObject.size,
       );
     } catch (error) {
       if (!mounted) return;
@@ -179,7 +174,6 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
               )
             else
               Container(
-                key: _routeMapKey,
                 margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 height: 400,
                 decoration: RideForgeVisuals.cardDecoration(
@@ -193,6 +187,8 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                   fitRoute: true,
                   showRouteEndpoints: true,
                   showRouteControls: true,
+                  captureGestures: true,
+                  styleString: MapStyleConfig.lightStyleUrl,
                   onMapReady: _onMapReady,
                 ),
               ),

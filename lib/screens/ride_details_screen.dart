@@ -278,6 +278,7 @@ class _RoutePreview extends StatelessWidget {
           fitRoute: true,
           showRouteEndpoints: true,
           showRouteControls: true,
+          captureGestures: true,
         ),
       ),
     );
